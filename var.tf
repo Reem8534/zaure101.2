@@ -23,12 +23,12 @@ variable "admin_password" {
   description = "The admin password for the VMs"
   default     = "NewP@ssw0rd123!"
 }
-
+#were not used
 variable "address_space" {
   description = "VNET address space"
   default     = ["10.4.0.0/16"]
 }
-
+#were not used
 variable "subnet" {
   description = "Subnet address space"
   default     = ["10.4.0.0/24"]
