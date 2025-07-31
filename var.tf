@@ -16,12 +16,12 @@ variable "number_of_vms" {
 
 variable "admin_username" {
   description = "The admin username for the VMs"
-  default     = "adminuser"
+  default     = "reemadmin"
 }
 
 variable "admin_password" {
   description = "The admin password for the VMs"
-  default     = "Ymn$DJ5Igv#0U0d906HZ"
+  default     = "NewP@ssw0rd123!"
 }
 
 variable "address_space" {
