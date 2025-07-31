@@ -1,13 +1,8 @@
 provider "azurerm" {
   features {}
-
-  subscription_id = "a785336a-35d8-4efd-80be-93d34a9e4b66"
-  client_id       = "aaab6494-aeab-4e0b-bac6-61615e52ec23"
-  client_secret   = "dBu8Q~n-iQPrjjE.r16K57rZsWfHVCYMIoZ_Xa8y"
-  tenant_id       = "f958e84a-92b8-439f-a62d-4f45996b6d07"
 }
 
-
+# Define tags (for the policy)
 locals {
   tags = {
     environment = "${var.environment}"
@@ -16,11 +11,12 @@ locals {
   }
 }
 
-# Reference existing resource group
+# the resource group
 data "azurerm_resource_group" "main" {
   name = "${var.group_name}"
 }
 
+#the vn (had errors for the address_space value so added it here, not using var file)
 resource "azurerm_virtual_network" "main" {
   name                = "${var.prefix}-vnet"
   address_space       = ["10.10.0.0/16"]
@@ -29,6 +25,7 @@ resource "azurerm_virtual_network" "main" {
   tags                = local.tags
 }
 
+#the subnet (had errors for the address_prefixes value so added it here, not using var file)
 resource "azurerm_subnet" "main" {
   name                 = "${var.prefix}-subnet"
   resource_group_name  = data.azurerm_resource_group.main.name
@@ -36,19 +33,22 @@ resource "azurerm_subnet" "main" {
   address_prefixes     = ["10.10.1.0/24"]
 }
 
+# to control the network traffic
 resource "azurerm_network_security_group" "main" {
   name                = "${var.prefix}-nsg"
   location            = var.location
   resource_group_name = data.azurerm_resource_group.main.name
   tags                = local.tags
 }
-
-resource "azurerm_network_security_rule" "vnet" {
+####new rules
+#  Rule priority 110/115/120/130/ (uniq)
+#1
+resource "azurerm_network_security_rule" "Allow_Traffic_Within_VNET" {
   name                        = "AllowTrafficWithinVNET"
   priority                    = 120
   direction                   = "Inbound"
   access                      = "Allow"
-  protocol                    = "TCP"
+  protocol                    = "*"
   source_port_range           = "*"
   destination_port_range      = "*"
   source_address_prefix       = "10.10.0.0/16"
@@ -56,8 +56,8 @@ resource "azurerm_network_security_rule" "vnet" {
   resource_group_name         = data.azurerm_resource_group.main.name
   network_security_group_name = azurerm_network_security_group.main.name
 }
-
-resource "azurerm_network_security_rule" "blockinternet" {
+#2
+resource "azurerm_network_security_rule" "block_internet" {
   name                        = "BlockAllInternet"
   priority                    = 130
   direction                   = "Inbound"
@@ -66,6 +66,34 @@ resource "azurerm_network_security_rule" "blockinternet" {
   source_port_range           = "*"
   destination_port_range      = "*"
   source_address_prefix       = "*"
+  destination_address_prefix  = "*"
+  resource_group_name         = data.azurerm_resource_group.main.name
+  network_security_group_name = azurerm_network_security_group.main.name
+}
+#3
+resource "azurerm_network_security_rule" "allow_outbound_vnet" {
+  name                        = "AllowOutboundWithinVNET"
+  priority                    = 110
+  direction                   = "Outbound"
+  access                      = "Allow"
+  protocol                    = "*"
+  source_port_range           = "*"
+  destination_port_range      = "*"
+  source_address_prefix       = "10.10.0.0/16"
+  destination_address_prefix  = "10.10.0.0/16"
+  resource_group_name         = data.azurerm_resource_group.main.name
+  network_security_group_name = azurerm_network_security_group.main.name
+}
+#4
+resource "azurerm_network_security_rule" "allow_http_lb" {
+  name                        = "AllowHTTPFromLoadBalancer"
+  priority                    = 115
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "TCP"
+  source_port_range           = "*"
+  destination_port_range      = "80"
+  source_address_prefix       = "AzureLoadBalancer"
   destination_address_prefix  = "*"
   resource_group_name         = data.azurerm_resource_group.main.name
   network_security_group_name = azurerm_network_security_group.main.name
