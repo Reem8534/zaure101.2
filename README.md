@@ -1,110 +1,145 @@
-By Rob Foster
+# Deploying a Web Server in Azure
 
-Updated 11/09/2020
+### Project Overview
 
-# Introduction
-This is my submission for the 'Deploying a Web Server in Azure' project as part of the 'DevOps Engineer for Microsoft Azure' nanodegree program from [Udacity](https://udacity.com).
+This project demonstrates how to deploy a scalable web server infrastructure on Microsoft Azure using Infrastructure as Code (IaC) principles. It includes:
 
-It does the following:
-- Deploys an azure policy that prevents resources from being created within the subscription unless they have a tag.
-- Uses packer to create a VM template which hosts a website that displays the message 'Hello World!'
-- Uses terraform to provision the following resources in azure:
-  - Availability set
-  - OS disks
-  - Data disks
-  - Load balancer
-  - Network interfaces
-  - Network security groups
-  - Public IP address
-  - Virtual Machines
-  - Virtual Network
+- Creating and assigning an **Azure Policy** to enforce tagging on all resources.
+- Building a reusable Linux VM image with **Packer** that hosts a simple website displaying `"Hello, World!"`.
+- Provisioning infrastructure using **Terraform**, including:
+  - Virtual Network (VNet) and Subnet
+  - Public IP Addresses
+  - Load Balancer with backend pool and health probe
+  - Virtual Machine Scale Set (VMSS) using the custom image
+  - Jumpbox VMs for SSH access
+  - Network Interfaces, Security Groups, OS & Data disks
 
-# Instructions
+The goal is to automate deployment for consistency, security, and scalability.
 
-## Deploy the policy
+---
 
-Create the policy definitition:
+### Getting Started
+
+#### Prerequisites
+
+- Active Azure subscription
+- Azure CLI installed and logged in (`az login`)
+- Packer installed ([Packer Downloads](https://www.packer.io/downloads))
+- Terraform installed ([Terraform Downloads](https://developer.hashicorp.com/terraform/downloads))
+- Azure service principal credentials (client ID, client secret, tenant ID, subscription ID)
+
+---
+
+### Instructions for Running Templates
+
+#### Azure Policy
+
+Create the Azure Policy to enforce resource tagging:
+### Create the policy definition
+
+```powershell
+az policy definition create `
+  --name "require-tags" `
+  --display-name "Require tags on resources" `
+  --description "Deny resource creation if tags are missing" `
+  --rules policy.json `
+  --mode All
 ```
-az policy definition create --name tagging-policy --mode indexed --rules policy.json
-```
-Assign the policy definition:
-```
-az policy assignment create --policy tagging-policy --name tagging-policy
+### Assign the Policy
+
+Replace `<your-subscription-id>` with your Azure subscription ID:
+
+```powershell
+az policy assignment create --name "require-tags-assignment" --policy "require-tags" --scope "/subscriptions/<your-subscription-id>"
+
 ```
 
-## Create a template using packer
+## Packer Image Creation
+Log in to Azure:
 
-Login to azure:
 ```
 az login
 ```
+Set environment variables for Azure credentials:
 
-Before running packer, create a resource group to contain all the resources:
 ```
-az group create -n rob-rg -l uksouth
+export AZURE_CLIENT_ID="your-client-id"
+export AZURE_CLIENT_SECRET="your-client-secret"
+export AZURE_SUBSCRIPTION_ID="your-subscription-id"
+export AZURE_TENANT_ID="your-tenant-id"
 ```
-Create a service principal to allow packer to build templates in azure:
-```
-az ad sp create-for-rbac --query "{ client_id: appId, client_secret: password, tenant_id: tenant }"
-```
+Customize the server1.json Packer template as needed.
 
-On the machine you are running packer from, set the following environment variables using the output from the above command, along with your subscription ID:
+## Build the image:
 
-- CLIENT_ID
-- CLIENT_SECRET
-- TENANT_ID
-- SUBSCRIPTION_ID
-
-Customize the following values in [server.json](server.json):
-- managed_image_resource_group_name - The name of the resource group you created in azure
-- managed_image_name - The name to give to your template
-- os_type - The OS type of the base image
-- image_publisher - The publisher of the base image
-- image_offer -  The offer of the base image
-- image_sku - The SKU of the base image
-- location - The region of the image
-- vm_size - The size of the VM
-- azure_tags:
-  - environment: Environment tag, e.g. prod, dev
-  - project - Project tag
-  - owner - Owner tag
-  - image - Image tag
-- provisioners:
-  - inline - The commands to execute on your template
-
-Create the template in azure:
 ```
-packer build server.json
+packer build server1.json
+```
+Verify the image exists:
+
+```
+az image show --resource-group <Resource-group> --name myPackerImage
 ```
 
-## Provision resources using terraform
-
-Download plugins:
+## Terraform Infrastructure Deployment
+Initialize Terraform and download providers:
 ```
 terraform init
 ```
-The following settings can be customized by editing the variables in the [terraform.tfvars](terraform.tfvars) file:
-- prefix - The prefix which should be used for the names of all resources in this deployment
-- location - The azure region in which all resources in this deployment should be created
-- number_of_vms - Number of VMs to provision
-- admin_username - The admin username for the VMs
-- admin_password - The admin password for the VMs
-- address_space - VNET address space
-- subnet - Subnet address space
-- environment - Environment tag, e.g. prod, dev
-- project - Project tag
-- owner - Owner tag
-- image - The VM image to deploy (should match the name of the image created by packer)
+## Customization Instructions
+  To customize this project for your environment and requirements, update the variables defined below.
 
-Provison the resources:
+  Key variables in var file:
+  - prefix: Prefix for resource names to avoid conflicts.
+  - location: Azure region for deployment.
+  - admin_username/admin_password: Credentials for Linux VM.
+  - number_of_vms: Number of VMs to create.
+  - packer_image_name: Name of the Packer-built image to deploy.
+  - resource_group_name: Target Azure resource group.
+  - tags: Key-value pairs for resource tagging.
+ 
+
+    
+now run the plan
 ```
-terraform apply
+terraform plan
 ```
-Once your resources are no longer required, delete them:
+### Apply Terraform to create resources:
+
 ```
-terraform destroy
+terraform apply 
 ```
-Finally, you can delete the resource group:
+### To destroy resources when no longer needed:
 ```
-az group delete -n rob-rg
+terraform destroy 
 ```
+
+## Notes
+Ensure variables in var.tf and terraform.tfvars match, especially list types like address_space and subnet_address_prefixes.
+
+The VM Scale Set uses the custom image created by Packer (myPackerImage).
+
+The load balancer exposes the VMSS instances on the port defined by application_port.
+
+Keep credentials secure; avoid committing secrets to version control.
+
+## Files in this repo:
+
+policy.json - Azure Policy JSON definition to enforce tagging, Prevents users from creating resources without required tags.
+
+server1.json - Packer template to build the Linux VM image, This creates a custom VM image with your software pre-installed, It defines the base image (such as Ubuntu), authentication settings using a service principal.
+
+main1.tf - Terraform main configuration file to provision Azure infrastructure, It creates a virtual network and subnet, a network security group with appropriate rules, a public IP address, and a load balancer with a backend address pool and health probe. It also defines a Virtual Machine Scale Set (VMSS) that uses the Packer-built image to deploy web server instances.
+
+var.tf - Terraform variables definitions, contains all the input variables used throughout the Terraform configuration, enabling customization and reusability of the infrastructure code. Each variable is defined with a name, a description, and an optional default value
+
+## Expected Output
+Azure Policy assigned and enforcing tags on resource creation.
+
+A custom VM image named myPackerImage in the specified resource group.
+
+A Virtual Network and Subnet deployed.
+
+A Load Balancer distributing traffic to a Virtual Machine Scale Set running the custom image.
+
+Resources properly tagged as per policy requirements.
